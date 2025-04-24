@@ -11,9 +11,11 @@ var WORLD_GRAVITY: float = ProjectSettings.get_setting("physics/3d/default_gravi
 @export var jump_strength: float = 24.0
 
 @export var move_direction := Vector3.ZERO ## core
-@export var move_speed: float = 2.0
+@export var absolute_move_direction: float = 3.0
+@onready var move_speed: float = absolute_move_direction
 
 var in_control: bool = false
+var mappable_inputs: Array[String] = ["vertical", "primary", "secondary", "tertiary"]
 
 ## player UX
 @export var vertical_sensitivity: float = 0.15 ## core
@@ -82,13 +84,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		look(event.relative)
 	
-	if Input.is_action_just_pressed("vertical"):
-		if is_on_floor(): # change to can_jump or sumn
-			move_override(Vector3.UP * jump_strength)
+	for input in mappable_inputs:
+		if Input.is_action_just_pressed(input):
+			action_mapper(input)
+			return
 
 
 func _process(_delta: float) -> void:
-	move(get_input_direction() * move_speed)
+	if in_control:
+		move(get_input_direction() * move_speed)
 
 
 func get_input_direction() -> Vector3:
@@ -105,10 +109,40 @@ func get_view_basis(looker: Node3D, up_dir := Vector3.UP) -> Basis:
 		up_dir,
 		Vector3.FORWARD.signed_angle_to(forward_dir, Vector3.UP)
 	)
-
-
 ## deriuqer
 
 
 ## utility
 ## ytilitu
+
+
+## addons
+func action_mapper(action_name: String):
+	# add modifier logic
+	var action_function: String = ""
+	match action_name:
+		"vertical":
+			action_function = "jump"
+		"primary":
+			pass
+		"secondary":
+			pass
+		"tertiary":
+			action_function = "crouch"
+
+	if action_function != "" and has_method(action_function):
+		call(action_function, action_name)
+
+
+func jump(trigger_input: String):
+	if is_on_floor(): # change to can_jump or sumn
+		move_override(Vector3.UP * jump_strength)
+
+
+func crouch(trigger_input: String) -> void:
+	print("crouching with: '", trigger_input, "'")
+
+
+func prone(trigger_input: String) -> void:
+	pass
+## snodda
