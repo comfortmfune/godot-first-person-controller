@@ -20,19 +20,21 @@ var controller := Controllers.KEYBOARD ## required
 
 ## core -------------------------------------------------------------------------
 ##
+
+signal property_changed(property_name)
+
 @export var camera_holder: Node3D ## core
 @export var body: Node3D ## core
 
 var in_control: bool = false ## core
 var current_actions: Dictionary[Callable, Dictionary]
-#@onready var action_func: Callable = flush_action  ## core
-#var action_func_arguments: Dictionary = {} ## core
 
 @export var terrestrial: bool = true ## core
 var WORLD_GRAVITY: float = ProjectSettings.get_setting("physics/3d/default_gravity") ## core by-extension
 @onready var gravity: float = WORLD_GRAVITY ## core
 
 @export var move_direction := Vector3.ZERO ## core
+var moving: bool = false ## utility
 
 
 func _physics_process(delta: float) -> void:
@@ -58,17 +60,10 @@ func flush_action(action_key: Callable = _physics_process) -> void:
 		current_actions.clear()
 	elif current_actions.has(action_key):
 		current_actions.erase(action_key)
-#	if action_func == flush_action:
-#		return
-	
-#	action_func = flush_action ## null value
-#	action_func_arguments.clear()
 
 func set_action(action_function: Callable, action_func_args: Dictionary) -> void:
 	flush_action(action_function)
 	current_actions[action_function] = action_func_args
-#	action_func = action_function
-#	action_func_arguments = action_func_args
 
 
 func look(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
@@ -104,15 +99,17 @@ func move_override(direction: Vector3) -> void:
 
 
 ## utility -------------------------------------------------------------------------
+## dependencies: core
 ##
 const controller_look_inputs: Array[String] = ["look_up", "look_down", "look_left", "look_right"]
 const motion_inputs: Array[String] = ["forward", "back", "left", "right"]
 const mappable_inputs: Array[String] = ["vertical", "primary", "secondary", "tertiary"]
 
 
-## Routes 'log' texts from where it is called to Lggr
-## prints to 'stdout' and 'stderr' if no Lggr is in the project (probably too verbose)
-func log_(text: String, output_type: String = "std") -> void: ## core
+## Routes 'log' texts from where it is called to Lggr;
+## prints to 'stdout' and 'stderr' if no Lggr is in the project (probably too verbose);
+## called in: 'core'
+func log_(text: String, output_type: String = "std") -> void:
 	if not type_exists("Lggr"):
 		var output: String = "lggr-in: '" + text + "' [ALERT: no Lggr to receive input]"
 		if output_type == "err":
@@ -159,35 +156,11 @@ func motion_mapper() -> void:
 		await get_tree().physics_frame
 	
 	moving = false
-
-
-func action_mapper(input_trigger_name: String) -> void:
-	# add modifier logic
-	var _action_function: Callable
-	match input_trigger_name:
-		"vertical":
-			if is_on_floor():
-				_action_function = jump
-			else:
-				_action_function = double_jump
-		"primary":
-			pass
-		"secondary":
-			pass
-		"tertiary":
-			_action_function = crouch
-
-	if _action_function:
-		_action_function.call(input_trigger_name)
 ## ytilitu -------------------------------------------------------------------------
 
 
 ## required -------------------------------------------------------------------------
-##
-var moving: bool = false
-enum MoveModes {WALK, RUN, SPRINT, }
-var move_mode := MoveModes.WALK
-
+## dependencies: utility, core
 
 func _unhandled_input(event: InputEvent) -> void:
 	## toggle control/cursor
@@ -225,15 +198,70 @@ func _process(_delta: float) -> void:
 
 
 ## addons -------------------------------------------------------------------------
+## dependencies: required, utility, core
 ##
 
-## basic
+## utility-function for mapping executable-actions (addons) to keypresses;
+## not an addon; only delete if changing related 'utility' or 'core' functionality
+func action_mapper(input_trigger_name: String) -> void:
+	# add modifier logic
+	# add key-hold logic
+	var _action_function: Callable
+	match input_trigger_name:
+		"vertical":
+			if is_on_floor():
+				_action_function = jump
+			else:
+				_action_function = double_jump
+		"primary":
+			pass
+		"secondary":
+			pass
+		"tertiary":
+			if pose_mode == PoseModes.STAND:
+				_action_function = crouch
+			else:
+				_action_function = stand
+
+	if _action_function:
+		_action_function.call(input_trigger_name)
+
+
+## basic --------------------------------
 @export var absolute_move_speed: float = 3.0 ## base move speed unaffected by multipliers
-@onready var move_speed: float = absolute_move_speed ## current move speed
+@onready var move_speed: float = absolute_move_speed ## current move speed (accounting for all multipliers), used in move()
+enum PoseModes {STAND, SIT, LAY, CROUCH}
+var pose_mode := PoseModes.STAND:
+	set(value):
+		pose_mode = value
+		set_collision_shape(value)
+				
+		property_changed.emit("pose_mode")
+enum MoveModes {WALK, RUN, SPRINT}
+var move_mode := MoveModes.WALK:
+	set(value):
+		move_mode = value
+		property_changed.emit("move_mode")
 @export var jump_strength: float = 24.0
 
 
-## --
+func set_collision_shape(mode: PoseModes):
+	$CollisionShape3D.disabled = true
+	$CrouchCollisionShape3D.disabled = true
+	$ProneCollisionShape3D.disabled = true
+
+	match mode:
+		PoseModes.STAND:
+			$CollisionShape3D.disabled = false
+		PoseModes.SIT:
+			$CollisionShape3D.disabled = false
+		PoseModes.LAY:
+			$ProneCollisionShape3D.disabled = false
+		PoseModes.CROUCH:
+			$CrouchCollisionShape3D.disabled = false
+
+
+## ----
 func move_on_ground() -> void:
 	set_action(move_on_ground_process, {"move_speed": move_speed})
 
@@ -241,32 +269,56 @@ func move_on_ground_process(args: Dictionary, _delta: float) -> void:
 	move(get_input_direction() * args.move_speed)
 
 
-## --
+## ----
 func jump(_trigger_input: String) -> void:
-	if not is_on_floor(): # change to can_jump or sumn
+	if not is_on_floor():
 		return
 	
 	move_override(Vector3.UP * jump_strength)
+	stand(_trigger_input)
 
 
-## --
-func crouch(trigger_input: String) -> void:
-	print("crouching with: '", trigger_input, "'")
+## ----
+func stand(_trigger_input: String) -> void:
+	pose_mode = PoseModes.STAND
+	camera_holder.position = Vector3(0, 1.5, 0)
 
 
-## --
+## -----
+func crouch(_trigger_input: String) -> void:
+	pose_mode = PoseModes.CROUCH
+	move_mode = MoveModes.WALK
+	camera_holder.position = Vector3(0, 1.0, 0)
+
+
+## ----
 func prone(_trigger_input: String) -> void:
+	pose_mode = PoseModes.LAY
+	camera_holder.position = Vector3(0.75, 0.25, 0)
+
+
+## advanced --------------------------------
+## ----
+func sprint(_trigger_input: String) -> void:
 	pass
 
 
-## advanced
+## ----
+func slide(_trigger_input: String) -> void:
+	pass
 
 
-## +ultra
+## ----
+func vault(_trigger_input: String) -> void:
+	pass
+
+
+## +ultra --------------------------------
 @export var max_midair_jumps: int = 1
 @onready var midair_jumps: int = max_midair_jumps
 
 
+## ----
 func double_jump(_trigger_input: String) -> void: ## midair jump
 	if midair_jumps <= 0:
 		print("no jumps 4 u")
@@ -290,5 +342,31 @@ func double_jump(_trigger_input: String) -> void: ## midair jump
 			print("jump reset")
 			break
 		await get_tree().physics_frame
+
+
+## ----
+func wall_run(_trigger_input: String) -> void:
+	pass
+
+
+## ----
+func wall_jump(_trigger_input: String) -> void:
+	pass
+
+
+## ----
+func dash(_trigger_input: String) -> void:
+	pass
+
+
+## tools --------------------------------
+## ----
+func glide(_trigger_input: String) -> void:
+	pass
+
+
+## ----
+func grapple(_trigger_input: String) -> void:
+	pass
 
 ## snodda -------------------------------------------------------------------------
