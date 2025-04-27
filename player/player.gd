@@ -1,40 +1,39 @@
 class_name FirstPersonPlayer extends CharacterBody3D
 
-
 ## UX variables -------------------------------------------------------------------------
 ##
 ## player UX
-enum Controllers {KEYBOARD, JOYSTICK} ## required
-var controller := Controllers.KEYBOARD ## required
-@export var mouse_vertical_sensitivity: float = 0.15 ## required
-@export var mouse_horizontal_sensitivity: float = 0.15 ## required
-@export var controller_vertical_sensitivity: float = 2.5 ## required
-@export var controller_horizontal_sensitivity: float = 2.5 ## required
-@export var controller_left_stick_deadzone: Vector2 = Vector2.ONE * 0.2 ## required: TODO: implement
-@export var controller_right_stick_deadzone: Vector2 = Vector2.ONE * 0.2 ## required: TODO: implement
+enum Controllers { KEYBOARD, JOYSTICK }  ## required
+var controller := Controllers.KEYBOARD  ## required
+@export var mouse_vertical_sensitivity: float = 0.15  ## required
+@export var mouse_horizontal_sensitivity: float = 0.15  ## required
+@export var controller_vertical_sensitivity: float = 2.5  ## required
+@export var controller_horizontal_sensitivity: float = 2.5  ## required
+@export var controller_left_stick_deadzone: Vector2 = Vector2.ONE * 0.2  ## required: TODO: implement
+@export var controller_right_stick_deadzone: Vector2 = Vector2.ONE * 0.2  ## required: TODO: implement
+@export var key_hold_register_delay: float = 0.3
 
 ## dev 'player UX'
-@export var move_acceleration_rate: float = 0.2 ## core
+@export var move_acceleration_rate: float = 0.2  ## core
 ## selbairav XU -------------------------------------------------------------------------
-
 
 ## core -------------------------------------------------------------------------
 ##
 
 signal property_changed(property_name)
 
-@export var camera_holder: Node3D ## core
-@export var body: Node3D ## core
+@export var camera_holder: Node3D  ## core
+@export var body: Node3D  ## core
 
-var in_control: bool = false ## core
+var in_control: bool = false  ## core
 var current_actions: Dictionary[Callable, Dictionary]
 
-@export var terrestrial: bool = true ## core
-var WORLD_GRAVITY: float = ProjectSettings.get_setting("physics/3d/default_gravity") ## core by-extension
-@onready var gravity: float = WORLD_GRAVITY ## core
+@export var terrestrial: bool = true  ## core
+var WORLD_GRAVITY: float = ProjectSettings.get_setting("physics/3d/default_gravity")  ## core by-extension
+@onready var gravity: float = WORLD_GRAVITY  ## core
 
-@export var move_direction := Vector3.ZERO ## core
-var moving: bool = false ## utility
+@export var move_direction := Vector3.ZERO  ## core
+var moving: bool = false  ## utility
 
 
 func _physics_process(delta: float) -> void:
@@ -43,9 +42,6 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= gravity * delta
 		move_direction.y = velocity.y
 
-	#var input_direction := Vector3.ZERO 
-#	if action_func and action_func != flush_action:
-#		action_func.call(action_func_arguments, delta)
 	if not current_actions.is_empty():
 		for action_key in current_actions:
 			action_key.call(current_actions[action_key], delta)
@@ -61,6 +57,7 @@ func flush_action(action_key: Callable = _physics_process) -> void:
 	elif current_actions.has(action_key):
 		current_actions.erase(action_key)
 
+
 func set_action(action_function: Callable, action_func_args: Dictionary) -> void:
 	flush_action(action_function)
 	current_actions[action_function] = action_func_args
@@ -68,7 +65,7 @@ func set_action(action_function: Callable, action_func_args: Dictionary) -> void
 
 func look(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
 
-	var holder_rotation_degrees: Vector3 = camera_holder.rotation_degrees
+	var holder_rotation_degrees := Vector3(camera_holder.rotation_degrees.x, rotation_degrees.y, 0)
 
 	## horizontal rotation
 	holder_rotation_degrees.y -= turn.x * sensitivity.x
@@ -78,7 +75,8 @@ func look(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
 	holder_rotation_degrees.x -= turn.y * sensitivity.y
 	holder_rotation_degrees.x = clampf(holder_rotation_degrees.x, -80, 80)
 
-	camera_holder.rotation_degrees = holder_rotation_degrees
+	rotation_degrees.y = holder_rotation_degrees.y
+	camera_holder.rotation_degrees.x = holder_rotation_degrees.x
 
 
 func move(direction: Vector3) -> void:
@@ -96,7 +94,6 @@ func move_override(direction: Vector3) -> void:
 	if direction.z != 0:
 		move_direction.z = direction.z
 ## eroc -------------------------------------------------------------------------
-
 
 ## utility -------------------------------------------------------------------------
 ## dependencies: core
@@ -124,7 +121,7 @@ func get_input_direction() -> Vector3:
 	var input_vector: Vector2 = Input.get_vector("left", "right", "forward", "back")
 	var input_vector3 := Vector3(input_vector.x, 0, input_vector.y)
 
-	return (get_view_basis(camera_holder) * input_vector3).normalized()
+	return (get_view_basis(self) * input_vector3).normalized()
 
 
 func _is_motion_input_zero() -> bool:
@@ -148,19 +145,33 @@ func get_view_basis(looker: Node3D, up_dir := Vector3.UP) -> Basis:
 func motion_mapper() -> void:
 	if moving:
 		return
-	
+
 	moving = true
 	move_on_ground()
 
 	while not _is_motion_input_zero():
 		await get_tree().physics_frame
-	
-	moving = false
-## ytilitu -------------------------------------------------------------------------
 
+	moving = false
+
+
+func pressed_key_held(key_name: String) -> bool:
+	var key_held: bool = false
+	var time_to_register: float = key_hold_register_delay
+
+	while Input.is_action_pressed(key_name):
+		if time_to_register <= 0:
+			key_held = true
+			break
+		await get_tree().process_frame
+		time_to_register -= get_process_delta_time()
+
+	return key_held
+## ytilitu -------------------------------------------------------------------------
 
 ## required -------------------------------------------------------------------------
 ## dependencies: utility, core
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	## toggle control/cursor
@@ -171,22 +182,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			in_control = true
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-	
+
 	if not in_control:
-		return ## do not proceed if control is paused
+		return  ## do not proceed if control is paused
 
 	if controller == Controllers.KEYBOARD and event is InputEventMouseMotion:
 		look(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
-	
+
 	for input in motion_inputs:
 		if Input.is_action_just_pressed(input):
 			motion_mapper()
 			return
 
-
 	for input in mappable_inputs:
 		if Input.is_action_just_pressed(input):
-			action_mapper(input)
+			var input_held: bool = await pressed_key_held(input)
+			action_mapper(input, input_held)
 			return
 
 
@@ -196,14 +207,14 @@ func _process(_delta: float) -> void:
 		Vector2(controller_horizontal_sensitivity, controller_vertical_sensitivity))
 ## deriuqer -------------------------------------------------------------------------
 
-
 ## addons -------------------------------------------------------------------------
 ## dependencies: required, utility, core
 ##
 
+
 ## utility-function for mapping executable-actions (addons) to keypresses;
 ## not an addon; only delete if changing related 'utility' or 'core' functionality
-func action_mapper(input_trigger_name: String) -> void:
+func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 	# add modifier logic
 	# add key-hold logic
 	var _action_function: Callable
@@ -218,26 +229,31 @@ func action_mapper(input_trigger_name: String) -> void:
 		"secondary":
 			pass
 		"tertiary":
-			if pose_mode == PoseModes.STAND:
-				_action_function = crouch
+			if hold:
+				if pose_mode != PoseModes.LAY:
+					_action_function = prone
+				else:
+					_action_function = stand
 			else:
-				_action_function = stand
+				if pose_mode == PoseModes.CROUCH:
+					_action_function = stand
+				else:
+					_action_function = crouch
 
 	if _action_function:
 		_action_function.call(input_trigger_name)
 
-
 ## basic --------------------------------
-@export var absolute_move_speed: float = 3.0 ## base move speed unaffected by multipliers
-@onready var move_speed: float = absolute_move_speed ## current move speed (accounting for all multipliers), used in move()
-enum PoseModes {STAND, SIT, LAY, CROUCH}
+@export var absolute_move_speed: float = 3.0  ## base move speed unaffected by multipliers
+@onready var move_speed: float = absolute_move_speed  ## current move speed (accounting for all multipliers), used in move()
+enum PoseModes { STAND, SIT, LAY, CROUCH }
 var pose_mode := PoseModes.STAND:
 	set(value):
 		pose_mode = value
 		set_collision_shape(value)
-				
+
 		property_changed.emit("pose_mode")
-enum MoveModes {WALK, RUN, SPRINT}
+enum MoveModes { WALK, RUN, SPRINT }
 var move_mode := MoveModes.WALK:
 	set(value):
 		move_mode = value
@@ -246,24 +262,32 @@ var move_mode := MoveModes.WALK:
 
 
 func set_collision_shape(mode: PoseModes):
-	$CollisionShape3D.disabled = true
-	$CrouchCollisionShape3D.disabled = true
-	$ProneCollisionShape3D.disabled = true
+	var node_keys_collision_values: Dictionary[String, bool] = {
+	"CollisionShape3D": true,
+	"CrouchCollisionShape3D": true,
+	"ProneCollisionShape3D": true,
+	}
 
 	match mode:
 		PoseModes.STAND:
-			$CollisionShape3D.disabled = false
+			node_keys_collision_values["CollisionShape3D"] = false
 		PoseModes.SIT:
-			$CollisionShape3D.disabled = false
+			node_keys_collision_values["CollisionShape3D"] = false
 		PoseModes.LAY:
-			$ProneCollisionShape3D.disabled = false
+			node_keys_collision_values["ProneCollisionShape3D"] = false
 		PoseModes.CROUCH:
-			$CrouchCollisionShape3D.disabled = false
+			node_keys_collision_values["CrouchCollisionShape3D"] = false
+
+	for node_name in node_keys_collision_values:
+		var collision_shape: CollisionShape3D = get_node(node_name)
+		if collision_shape.disabled != node_keys_collision_values[node_name]:
+			collision_shape.disabled = node_keys_collision_values[node_name]
 
 
 ## ----
 func move_on_ground() -> void:
-	set_action(move_on_ground_process, {"move_speed": move_speed})
+	set_action(move_on_ground_process, { "move_speed": move_speed })
+
 
 func move_on_ground_process(args: Dictionary, _delta: float) -> void:
 	move(get_input_direction() * args.move_speed)
@@ -273,7 +297,7 @@ func move_on_ground_process(args: Dictionary, _delta: float) -> void:
 func jump(_trigger_input: String) -> void:
 	if not is_on_floor():
 		return
-	
+
 	move_override(Vector3.UP * jump_strength)
 	stand(_trigger_input)
 
@@ -294,6 +318,7 @@ func crouch(_trigger_input: String) -> void:
 ## ----
 func prone(_trigger_input: String) -> void:
 	pose_mode = PoseModes.LAY
+	move_mode = MoveModes.WALK
 	camera_holder.position = Vector3(0.75, 0.25, 0)
 
 
@@ -312,18 +337,17 @@ func slide(_trigger_input: String) -> void:
 func vault(_trigger_input: String) -> void:
 	pass
 
-
 ## +ultra --------------------------------
 @export var max_midair_jumps: int = 1
 @onready var midair_jumps: int = max_midair_jumps
 
 
 ## ----
-func double_jump(_trigger_input: String) -> void: ## midair jump
+func double_jump(_trigger_input: String) -> void:  ## midair jump
 	if midair_jumps <= 0:
 		print("no jumps 4 u")
 		return
-	
+
 	print("jump jump")
 	var terrestrial_value = terrestrial
 	terrestrial = false
