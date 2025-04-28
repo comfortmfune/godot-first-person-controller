@@ -17,6 +17,7 @@ var controller := Controllers.KEYBOARD  ## required
 @export var move_acceleration_rate: float = 0.2  ## core
 ## selbairav XU -------------------------------------------------------------------------
 
+
 ## core -------------------------------------------------------------------------
 ##
 
@@ -95,13 +96,50 @@ func move_override(direction: Vector3) -> void:
 		move_direction.z = direction.z
 ## eroc -------------------------------------------------------------------------
 
+
 ## utility -------------------------------------------------------------------------
 ## dependencies: core
 ##
 const controller_look_inputs: Array[String] = ["look_up", "look_down", "look_left", "look_right"]
 const motion_inputs: Array[String] = ["forward", "back", "left", "right"]
-const mappable_inputs: Array[String] = ["vertical", "primary", "secondary", "tertiary"]
+const mappable_inputs: Array[String] = ["vertical", "primary", "secondary", "tertiary", "utility"]
 
+enum PoseModes { STAND, SIT, LAY, CROUCH }
+var pose_mode := PoseModes.STAND:
+	set(value):
+		pose_mode = value
+		set_collision_shape(value)
+
+		property_changed.emit("pose_mode")
+
+enum MoveModes { WALK, RUN, SPRINT }
+var move_mode := MoveModes.WALK:
+	set(value):
+		move_mode = value
+		property_changed.emit("move_mode")
+
+
+func set_collision_shape(mode: PoseModes):
+	var node_keys_collision_values: Dictionary[String, bool] = {
+	"CollisionShape3D": true,
+	"CrouchCollisionShape3D": true,
+	"ProneCollisionShape3D": true,
+	}
+
+	match mode:
+		PoseModes.STAND:
+			node_keys_collision_values["CollisionShape3D"] = false
+		PoseModes.SIT:
+			node_keys_collision_values["CollisionShape3D"] = false
+		PoseModes.LAY:
+			node_keys_collision_values["ProneCollisionShape3D"] = false
+		PoseModes.CROUCH:
+			node_keys_collision_values["CrouchCollisionShape3D"] = false
+
+	for node_name in node_keys_collision_values:
+		var collision_shape: CollisionShape3D = get_node(node_name)
+		if collision_shape.disabled != node_keys_collision_values[node_name]:
+			collision_shape.disabled = node_keys_collision_values[node_name]
 
 ## Routes 'log' texts from where it is called to Lggr;
 ## prints to 'stdout' and 'stderr' if no Lggr is in the project (probably too verbose);
@@ -167,11 +205,32 @@ func pressed_key_held(key_name: String) -> bool:
 		time_to_register -= get_process_delta_time()
 
 	return key_held
+
+
+func maintain_property_on_hold(key_name: String, object: Object, property_name: String, new_value, force: bool = false, maintain_old_value: bool = false) -> void:
+	var old_value = object[property_name]
+	object[property_name] = new_value
+
+	while Input.is_action_pressed(key_name):
+		print("maintaining '", key_name, "' hold")
+		if object[property_name] != new_value:
+			if force:
+				object[property_name] = new_value
+			else:
+				if not maintain_old_value:
+					old_value = object[property_name]
+				break
+
+		await get_tree().process_frame
+	
+	object[property_name] = old_value
+	
+
 ## ytilitu -------------------------------------------------------------------------
+
 
 ## required -------------------------------------------------------------------------
 ## dependencies: utility, core
-
 
 func _unhandled_input(event: InputEvent) -> void:
 	## toggle control/cursor
@@ -207,16 +266,15 @@ func _process(_delta: float) -> void:
 		Vector2(controller_horizontal_sensitivity, controller_vertical_sensitivity))
 ## deriuqer -------------------------------------------------------------------------
 
+
 ## addons -------------------------------------------------------------------------
 ## dependencies: required, utility, core
 ##
-
 
 ## utility-function for mapping executable-actions (addons) to keypresses;
 ## not an addon; only delete if changing related 'utility' or 'core' functionality
 func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 	# add modifier logic
-	# add key-hold logic
 	var _action_function: Callable
 	match input_trigger_name:
 		"vertical":
@@ -239,67 +297,21 @@ func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 					_action_function = stand
 				else:
 					_action_function = crouch
+		"utility":
+			if hold:
+				maintain_property_on_hold(input_trigger_name, self, "move_mode", MoveModes.SPRINT)
+			else:
+				if move_mode == MoveModes.RUN:
+					move_mode = MoveModes.WALK
+				else:
+					move_mode = MoveModes.RUN
+			return
 
 	if _action_function:
 		_action_function.call(input_trigger_name)
 
+
 ## basic --------------------------------
-@export var absolute_move_speed: float = 3.0  ## base move speed unaffected by multipliers
-@onready var move_speed: float = absolute_move_speed  ## current move speed (accounting for all multipliers), used in move()
-enum PoseModes { STAND, SIT, LAY, CROUCH }
-var pose_mode := PoseModes.STAND:
-	set(value):
-		pose_mode = value
-		set_collision_shape(value)
-
-		property_changed.emit("pose_mode")
-enum MoveModes { WALK, RUN, SPRINT }
-var move_mode := MoveModes.WALK:
-	set(value):
-		move_mode = value
-		property_changed.emit("move_mode")
-@export var jump_strength: float = 24.0
-
-
-func set_collision_shape(mode: PoseModes):
-	var node_keys_collision_values: Dictionary[String, bool] = {
-	"CollisionShape3D": true,
-	"CrouchCollisionShape3D": true,
-	"ProneCollisionShape3D": true,
-	}
-
-	match mode:
-		PoseModes.STAND:
-			node_keys_collision_values["CollisionShape3D"] = false
-		PoseModes.SIT:
-			node_keys_collision_values["CollisionShape3D"] = false
-		PoseModes.LAY:
-			node_keys_collision_values["ProneCollisionShape3D"] = false
-		PoseModes.CROUCH:
-			node_keys_collision_values["CrouchCollisionShape3D"] = false
-
-	for node_name in node_keys_collision_values:
-		var collision_shape: CollisionShape3D = get_node(node_name)
-		if collision_shape.disabled != node_keys_collision_values[node_name]:
-			collision_shape.disabled = node_keys_collision_values[node_name]
-
-
-## ----
-func move_on_ground() -> void:
-	set_action(move_on_ground_process, { "move_speed": move_speed })
-
-
-func move_on_ground_process(args: Dictionary, _delta: float) -> void:
-	move(get_input_direction() * args.move_speed)
-
-
-## ----
-func jump(_trigger_input: String) -> void:
-	if not is_on_floor():
-		return
-
-	move_override(Vector3.UP * jump_strength)
-	stand(_trigger_input)
 
 
 ## ----
@@ -320,6 +332,38 @@ func prone(_trigger_input: String) -> void:
 	pose_mode = PoseModes.LAY
 	move_mode = MoveModes.WALK
 	camera_holder.position = Vector3(0.75, 0.25, 0)
+
+## ----
+@export var absolute_walk_speed: float = 2.0 ## base move speed unaffected by multipliers
+@export var absolute_run_speed: float = 4.0 ## base move speed unaffected by multipliers
+@export var absolute_sprint_speed: float = 8.0 ## base move speed unaffected by multipliers
+@onready var move_speed_multiplier: float = 1.0
+
+
+func move_on_ground() -> void:
+	set_action(move_on_ground_process, {})
+
+
+func move_on_ground_process(_args: Dictionary, _delta: float) -> void:
+	var speed: float = absolute_walk_speed
+	match move_mode:
+		MoveModes.RUN:
+			speed = absolute_run_speed
+		MoveModes.SPRINT:
+			speed = absolute_sprint_speed
+	
+	move(get_input_direction() * speed * move_speed_multiplier)
+
+
+## ----
+@export var jump_strength: float = 24.0
+
+func jump(_trigger_input: String) -> void:
+	if not is_on_floor():
+		return
+
+	move_override(Vector3.UP * jump_strength)
+	stand(_trigger_input)
 
 
 ## advanced --------------------------------
@@ -343,6 +387,7 @@ func vault(_trigger_input: String) -> void:
 
 
 ## ----
+@export var midair_jump_strength: float = 24.0
 func double_jump(_trigger_input: String) -> void:  ## midair jump
 	if midair_jumps <= 0:
 		print("no jumps 4 u")
@@ -352,7 +397,7 @@ func double_jump(_trigger_input: String) -> void:  ## midair jump
 	var terrestrial_value = terrestrial
 	terrestrial = false
 	velocity.y = 0
-	move_override(Vector3.UP * jump_strength)
+	move_override(Vector3.UP * midair_jump_strength)
 	midair_jumps -= 1
 	var _value: int = midair_jumps
 
