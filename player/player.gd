@@ -30,6 +30,7 @@ var in_control: bool = false:  ## core
 	set(value):
 		in_control = value
 		property_changed.emit("in_control")
+var control_blocked: bool = false ## core: INFO: not-in_control while in_control
 var current_actions: Dictionary[Callable, Dictionary]
 
 @export var terrestrial: bool = true  ## core
@@ -100,12 +101,25 @@ func move_override(direction: Vector3) -> void:
 		move_direction.z = direction.z
 
 
-#func move_on_ground(speed:float) -> void:
-#	set_action(move_on_ground_process, {"move_speed": speed})
+func move_over_time(direction: Vector3, duration: float, keep_control: bool = false, predicate: Callable = func(): return true, min_duration: float = -1) -> void:
+	while duration > 0 and (min_duration > 0 or predicate.call()):
+		move(direction)
+		if not keep_control and not control_blocked:
+			control_blocked = true
+
+		await get_tree().physics_frame
+
+		duration -= 1 * get_physics_process_delta_time()
+		min_duration -= 1 * get_physics_process_delta_time()
+	
+	if not keep_control:
+		control_blocked = false
+
+	return
 
 
 func move_on_ground_process(args: Dictionary, _delta: float) -> void:	
-	move(get_input_direction() * args.move_speed * move_speed_multiplier)
+	move(get_input_direction() * args.move_speed)
 ## eroc -------------------------------------------------------------------------
 
 
@@ -152,6 +166,15 @@ func set_collision_shape(mode: PoseModes):
 		var collision_shape: CollisionShape3D = get_node(node_name)
 		if collision_shape.disabled != node_keys_collision_values[node_name]:
 			collision_shape.disabled = node_keys_collision_values[node_name]
+
+
+func update_motion_control() -> void:
+	if not property_changed.is_connected(motion_mapper) and in_control and not control_blocked:
+		property_changed.connect(motion_mapper)
+		motion_mapper("pose_mode")
+	elif property_changed.is_connected(motion_mapper):
+		property_changed.disconnect(motion_mapper)
+		flush_action(move_on_ground_process)
 
 
 ## Routes 'log' texts from where it is called to Lggr;
@@ -236,7 +259,21 @@ func maintain_property_on_hold(key_name: String, object: Object, property_name: 
 
 
 ## required -------------------------------------------------------------------------
+## required only if you want to do anything with the controller
 ## dependencies: utility, core
+
+func _ready() -> void:
+	property_changed.connect(
+		func (prop_name: String):
+			if prop_name == "in_control":
+				update_motion_control()
+	)
+	property_changed.connect(
+		func (prop_name: String):
+			if prop_name == "control_blocked":
+				update_motion_control()
+	)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	## toggle control/cursor
@@ -247,14 +284,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			in_control = true
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-		
-		update_motion_control()
 
 	if not in_control:
 		return  ## do not proceed if control is paused
 
 	if controller == Controllers.KEYBOARD and event is InputEventMouseMotion:
 		look(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
+	
+	elif control_blocked:
+		return ## buffer input
 
 	for input in motion_inputs:
 		if Input.is_action_just_pressed(input):
@@ -276,22 +314,12 @@ func _process(_delta: float) -> void:
 
 
 ## API -------------------------------------------------------------------------
-func update_motion_control() -> void:
-	if in_control:
-		property_changed.connect(motion_mapper)
-		motion_mapper("pose_mode")
-	else:
-		property_changed.disconnect(motion_mapper)
-		flush_action(move_on_ground_process)
-
 
 ## utility-function for mapping executable-movement-actions (addons) to keypresses;
 ## not an addon; only delete if changing related 'utility' or 'core' functionality
 func motion_mapper(property_name: String) -> void:
 	if property_name != "pose_mode" and property_name != "move_mode":
 		return
-
-	#moving = true
 
 	match pose_mode:
 		PoseModes.LAY:
@@ -306,11 +334,6 @@ func motion_mapper(property_name: String) -> void:
 					run("")
 				MoveModes.SPRINT:
 					sprint("")
-
-	#while not _is_motion_input_zero():
-		#await get_tree().physics_frame
-
-	#moving = false
 
 
 ## utility-function for mapping executable-actions (addons) to keypresses;
@@ -330,26 +353,32 @@ func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 			pass
 		"tertiary":
 			if hold:
-				if pose_mode != PoseModes.LAY:
-					_action_function = prone
-				else:
-					_action_function = stand
+				_action_function = slide_manual
 			else:
-				if pose_mode == PoseModes.CROUCH:
-					_action_function = stand
-				else:
-					_action_function = crouch
+				_action_function = slide
 		"utility":
-			if pose_mode != PoseModes.STAND:
-				pass
-			elif hold: # add; toggle mode
-				maintain_property_on_hold(input_trigger_name, self, "move_mode", MoveModes.SPRINT)
-			else:
-				if move_mode == MoveModes.RUN:
-					move_mode = MoveModes.WALK
+			if Input.is_action_pressed("modifier"):
+				if pose_mode != PoseModes.STAND:
+					pass
+				elif hold: # add; toggle mode
+					maintain_property_on_hold(input_trigger_name, self, "move_mode", MoveModes.SPRINT)
 				else:
-					move_mode = MoveModes.RUN
-			return
+					if move_mode == MoveModes.RUN:
+						move_mode = MoveModes.WALK
+					else:
+						move_mode = MoveModes.RUN
+				return
+			else:
+				if hold:
+					if pose_mode != PoseModes.LAY:
+						_action_function = prone
+					else:
+						_action_function = stand
+				else:
+					if pose_mode == PoseModes.CROUCH:
+						_action_function = stand
+					else:
+						_action_function = crouch
 
 	if _action_function:
 		_action_function.call(input_trigger_name)
@@ -383,6 +412,8 @@ func run(_trigger_input: String) -> void:
 
 
 ## -----
+@export var absolute_crouch_speed: float = 2.0
+
 func crouch(_trigger_input: String) -> void:
 	pose_mode = PoseModes.CROUCH
 	move_mode = MoveModes.WALK
@@ -390,10 +421,12 @@ func crouch(_trigger_input: String) -> void:
 
 
 func crouch_walk(_trigger_input: String) -> void:
-	set_action(move_on_ground_process, {"move_speed": absolute_walk_speed})
+	set_action(move_on_ground_process, {"move_speed": absolute_crouch_speed})
 
 
 ## ----
+@export var absolute_crawl_speed: float = 1.0
+
 func prone(_trigger_input: String) -> void:
 	pose_mode = PoseModes.LAY
 	move_mode = MoveModes.WALK
@@ -401,10 +434,7 @@ func prone(_trigger_input: String) -> void:
 
 
 func crawl(_trigger_input: String) -> void:
-	set_action(move_on_ground_process, {"move_speed": absolute_walk_speed})
-
-
-@onready var move_speed_multiplier: float = 1.0
+	set_action(move_on_ground_process, {"move_speed": absolute_crawl_speed})
 
 
 ## ----
@@ -428,9 +458,39 @@ func sprint(_trigger_input: String) -> void:
 
 
 ## ----
+@export var absolute_slide_speed: float = 6.0
+@export var absolute_slide_time: float = 0.5
+
 func slide(_trigger_input: String) -> void:
-	pose_mode = PoseModes.LAY
+	prone(_trigger_input)
 	move_mode = MoveModes.SPRINT
+
+	var direction: Vector3 = get_input_direction()
+	if direction == Vector3.ZERO:
+		direction = (get_view_basis(self) * Vector3.FORWARD).normalized()
+	
+	await move_over_time(direction * absolute_slide_speed, absolute_slide_time)
+
+	stand(_trigger_input) # end in $USER desired pose
+	move_mode = MoveModes.RUN
+
+
+func slide_manual(_trigger_input: String) -> void:
+	prone(_trigger_input)
+	move_mode = MoveModes.SPRINT
+
+	var direction: Vector3 = get_input_direction()
+	if direction == Vector3.ZERO:
+		direction = (get_view_basis(self) * Vector3.FORWARD).normalized()
+	
+	await move_over_time(direction * absolute_slide_speed, INF, false,
+		func (): 
+			print(Input.is_action_pressed(_trigger_input))
+			return Input.is_action_pressed(_trigger_input), absolute_slide_time
+	)
+
+	stand(_trigger_input) # end in $USER desired pose
+	move_mode = MoveModes.RUN
 
 
 ## ----
