@@ -26,7 +26,10 @@ signal property_changed(property_name)
 @export var camera_holder: Node3D  ## core
 @export var body: Node3D  ## core
 
-var in_control: bool = false  ## core
+var in_control: bool = false:  ## core
+	set(value):
+		in_control = value
+		property_changed.emit("in_control")
 var current_actions: Dictionary[Callable, Dictionary]
 
 @export var terrestrial: bool = true  ## core
@@ -87,6 +90,7 @@ func move(direction: Vector3) -> void:
 ## INFO: for applying pulses eg jump;
 ## continuous application == the force;
 ## if desired override value is '0' use epsilon;
+# TODO: fix
 func move_override(direction: Vector3) -> void:
 	if direction.x != 0:
 		move_direction.x = direction.x
@@ -94,6 +98,14 @@ func move_override(direction: Vector3) -> void:
 		move_direction.y = direction.y
 	if direction.z != 0:
 		move_direction.z = direction.z
+
+
+#func move_on_ground(speed:float) -> void:
+#	set_action(move_on_ground_process, {"move_speed": speed})
+
+
+func move_on_ground_process(args: Dictionary, _delta: float) -> void:	
+	move(get_input_direction() * args.move_speed * move_speed_multiplier)
 ## eroc -------------------------------------------------------------------------
 
 
@@ -141,6 +153,7 @@ func set_collision_shape(mode: PoseModes):
 		if collision_shape.disabled != node_keys_collision_values[node_name]:
 			collision_shape.disabled = node_keys_collision_values[node_name]
 
+
 ## Routes 'log' texts from where it is called to Lggr;
 ## prints to 'stdout' and 'stderr' if no Lggr is in the project (probably too verbose);
 ## called in: 'core'
@@ -180,19 +193,6 @@ func get_view_basis(looker: Node3D, up_dir := Vector3.UP) -> Basis:
 	)
 
 
-func motion_mapper() -> void:
-	if moving:
-		return
-
-	moving = true
-	move_on_ground()
-
-	while not _is_motion_input_zero():
-		await get_tree().physics_frame
-
-	moving = false
-
-
 func pressed_key_held(key_name: String) -> bool:
 	var key_held: bool = false
 	var time_to_register: float = key_hold_register_delay
@@ -209,10 +209,16 @@ func pressed_key_held(key_name: String) -> bool:
 
 func maintain_property_on_hold(key_name: String, object: Object, property_name: String, new_value, force: bool = false, maintain_old_value: bool = false) -> void:
 	var old_value = object[property_name]
+	if old_value == new_value:
+		print("maintaining same value: skipping...")
+		return
+	
 	object[property_name] = new_value
+	var _count: int = 0
 
 	while Input.is_action_pressed(key_name):
-		print("maintaining '", key_name, "' hold")
+		#print("maintaining '", key_name, "' hold. _count @ '", count, "'")
+		_count +=1
 		if object[property_name] != new_value:
 			if force:
 				object[property_name] = new_value
@@ -241,6 +247,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			in_control = true
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		
+		update_motion_control()
 
 	if not in_control:
 		return  ## do not proceed if control is paused
@@ -250,7 +258,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	for input in motion_inputs:
 		if Input.is_action_just_pressed(input):
-			motion_mapper()
+			
 			return
 
 	for input in mappable_inputs:
@@ -267,9 +275,43 @@ func _process(_delta: float) -> void:
 ## deriuqer -------------------------------------------------------------------------
 
 
-## addons -------------------------------------------------------------------------
-## dependencies: required, utility, core
-##
+## API -------------------------------------------------------------------------
+func update_motion_control() -> void:
+	if in_control:
+		property_changed.connect(motion_mapper)
+		motion_mapper("pose_mode")
+	else:
+		property_changed.disconnect(motion_mapper)
+		flush_action(move_on_ground_process)
+
+
+## utility-function for mapping executable-movement-actions (addons) to keypresses;
+## not an addon; only delete if changing related 'utility' or 'core' functionality
+func motion_mapper(property_name: String) -> void:
+	if property_name != "pose_mode" and property_name != "move_mode":
+		return
+
+	#moving = true
+
+	match pose_mode:
+		PoseModes.LAY:
+			crawl("")
+		PoseModes.CROUCH:
+			crouch_walk("")
+		PoseModes.STAND:
+			match move_mode:
+				MoveModes.WALK:
+					walk("")
+				MoveModes.RUN:
+					run("")
+				MoveModes.SPRINT:
+					sprint("")
+
+	#while not _is_motion_input_zero():
+		#await get_tree().physics_frame
+
+	#moving = false
+
 
 ## utility-function for mapping executable-actions (addons) to keypresses;
 ## not an addon; only delete if changing related 'utility' or 'core' functionality
@@ -298,7 +340,9 @@ func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 				else:
 					_action_function = crouch
 		"utility":
-			if hold:
+			if pose_mode != PoseModes.STAND:
+				pass
+			elif hold: # add; toggle mode
 				maintain_property_on_hold(input_trigger_name, self, "move_mode", MoveModes.SPRINT)
 			else:
 				if move_mode == MoveModes.RUN:
@@ -309,15 +353,33 @@ func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 
 	if _action_function:
 		_action_function.call(input_trigger_name)
+## IPA -------------------------------------------------------------------------
 
+
+## addons -------------------------------------------------------------------------
+## dependencies: required, utility, core
+##
 
 ## basic --------------------------------
 
-
 ## ----
+@export var absolute_walk_speed: float = 2.0 ## base move speed unaffected by multipliers
+@export var absolute_run_speed: float = 4.0 ## base move speed unaffected by multipliers
+
+
 func stand(_trigger_input: String) -> void:
 	pose_mode = PoseModes.STAND
 	camera_holder.position = Vector3(0, 1.5, 0)
+
+
+func walk(_trigger_input: String) -> void:
+	#print("downing game")
+	set_action(move_on_ground_process, {"move_speed": absolute_walk_speed})
+
+
+func run(_trigger_input: String) -> void:
+	#print("normalizing game")
+	set_action(move_on_ground_process, {"move_speed": absolute_run_speed})
 
 
 ## -----
@@ -327,32 +389,22 @@ func crouch(_trigger_input: String) -> void:
 	camera_holder.position = Vector3(0, 1.0, 0)
 
 
+func crouch_walk(_trigger_input: String) -> void:
+	set_action(move_on_ground_process, {"move_speed": absolute_walk_speed})
+
+
 ## ----
 func prone(_trigger_input: String) -> void:
 	pose_mode = PoseModes.LAY
 	move_mode = MoveModes.WALK
 	camera_holder.position = Vector3(0.75, 0.25, 0)
 
-## ----
-@export var absolute_walk_speed: float = 2.0 ## base move speed unaffected by multipliers
-@export var absolute_run_speed: float = 4.0 ## base move speed unaffected by multipliers
-@export var absolute_sprint_speed: float = 8.0 ## base move speed unaffected by multipliers
+
+func crawl(_trigger_input: String) -> void:
+	set_action(move_on_ground_process, {"move_speed": absolute_walk_speed})
+
+
 @onready var move_speed_multiplier: float = 1.0
-
-
-func move_on_ground() -> void:
-	set_action(move_on_ground_process, {})
-
-
-func move_on_ground_process(_args: Dictionary, _delta: float) -> void:
-	var speed: float = absolute_walk_speed
-	match move_mode:
-		MoveModes.RUN:
-			speed = absolute_run_speed
-		MoveModes.SPRINT:
-			speed = absolute_sprint_speed
-	
-	move(get_input_direction() * speed * move_speed_multiplier)
 
 
 ## ----
@@ -368,26 +420,31 @@ func jump(_trigger_input: String) -> void:
 
 ## advanced --------------------------------
 ## ----
+@export var absolute_sprint_speed: float = 8.0 ## base move speed unaffected by multipliers
+
 func sprint(_trigger_input: String) -> void:
-	pass
+	#print("upping game")
+	set_action(move_on_ground_process, {"move_speed": absolute_sprint_speed})
 
 
 ## ----
 func slide(_trigger_input: String) -> void:
-	pass
+	pose_mode = PoseModes.LAY
+	move_mode = MoveModes.SPRINT
 
 
 ## ----
 func vault(_trigger_input: String) -> void:
 	pass
 
-## +ultra --------------------------------
-@export var max_midair_jumps: int = 1
-@onready var midair_jumps: int = max_midair_jumps
 
+## +ultra --------------------------------
 
 ## ----
+@export var max_midair_jumps: int = 1
+@onready var midair_jumps: int = max_midair_jumps
 @export var midair_jump_strength: float = 24.0
+
 func double_jump(_trigger_input: String) -> void:  ## midair jump
 	if midair_jumps <= 0:
 		print("no jumps 4 u")

@@ -1,0 +1,59 @@
+[gd_scene load_steps=3 format=3 uid="uid://dw5wso2lajq35"]
+
+[ext_resource type="Script" uid="uid://bs5bte7xunsqy" path="res://player/hud.gd" id="1_2mhk3"]
+[ext_resource type="PackedScene" uid="uid://bo8reqj35c3wg" path="res://player/ui/option_select.tscn" id="2_2e3ur"]
+
+[node name="HuD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 1
+mouse_filter = 1
+script = ExtResource("1_2mhk3")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="PoseOptionSelect" parent="VBoxContainer" instance=ExtResource("2_2e3ur")]
+layout_mode = 2
+
+[node name="Label" parent="VBoxContainer/PoseOptionSelect" index="0"]
+text = "PoseMode: "
+
+[node name="OptionButton" parent="VBoxContainer/PoseOptionSelect" index="1"]
+selected = 0
+item_count = 4
+popup/item_0/text = "stand"
+popup/item_0/id = 0
+popup/item_1/text = "sit"
+popup/item_1/id = 1
+popup/item_1/disabled = true
+popup/item_2/text = "lay"
+popup/item_2/id = 2
+popup/item_3/text = "crouch"
+popup/item_3/id = 3
+
+[node name="MoveOptionSelect" parent="VBoxContainer" instance=ExtResource("2_2e3ur")]
+layout_mode = 2
+
+[node name="Label" parent="VBoxContainer/MoveOptionSelect" index="0"]
+text = "MoveMode: "
+
+[node name="OptionButton" parent="VBoxContainer/MoveOptionSelect" index="1"]
+selected = 0
+item_count = 3
+popup/item_0/text = "walk"
+popup/item_0/id = 0
+popup/item_1/text = "run"
+popup/item_1/id = 1
+popup/item_2/text = "sprint"
+popup/item_2/id = 2
+popup/item_2/disabled = true
+
+[editable path="VBoxContainer/PoseOptionSelect"]
+[editable path="VBoxContainer/MoveOptionSelect"]
