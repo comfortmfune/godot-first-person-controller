@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://bfac57bnno3qf"]
+[gd_scene load_steps=15 format=3 uid="uid://bfac57bnno3qf"]
 
 [ext_resource type="Texture2D" uid="uid://c4oinf8ulvgs3" path="res://icon.svg" id="1_ii704"]
 [ext_resource type="PackedScene" uid="uid://b8jlsokoc3n41" path="res://player/player.tscn" id="2_0u2o0"]
@@ -22,6 +22,12 @@ size = Vector3(50, 1, 50)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ii704"]
 size = Vector3(50, 1, 50)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0u2o0"]
+size = Vector3(100, 1, 100)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jjmkw"]
+size = Vector3(100, 1, 100)
 
 [sub_resource type="BoxMesh" id="BoxMesh_ii704"]
 
@@ -47,6 +53,15 @@ mesh = SubResource("BoxMesh_fe0n8")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
 shape = SubResource("BoxShape3D_ii704")
+
+[node name="Floorer" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.75, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floorer"]
+mesh = SubResource("BoxMesh_0u2o0")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floorer"]
+shape = SubResource("BoxShape3D_jjmkw")
 
 [node name="Block" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -5)

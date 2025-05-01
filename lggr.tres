@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="Lggr" load_steps=2 format=3 uid="uid://slegl2x4ping"]
+
+[ext_resource type="Script" uid="uid://cjhiugwa4cc2x" path="res://gd_lggr.gd" id="1_ro6g1"]
+
+[resource]
+script = ExtResource("1_ro6g1")

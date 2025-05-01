@@ -1,51 +1,69 @@
-[gd_scene load_steps=7 format=3 uid="uid://b8jlsokoc3n41"]
+[gd_scene load_steps=8 format=3 uid="uid://b8jlsokoc3n41"]
 
 [ext_resource type="Script" uid="uid://ctraqrddyh5od" path="res://player/player.gd" id="1_oul6g"]
 [ext_resource type="PackedScene" uid="uid://dw5wso2lajq35" path="res://player/hud.tscn" id="2_rkbax"]
 
+[sub_resource type="SphereShape3D" id="SphereShape3D_rkbax"]
+radius = 0.2
+
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_kqu6x"]
-radius = 0.25
+radius = 0.2
 height = 1.8
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_oul6g"]
-radius = 0.25
+radius = 0.2
 height = 0.9
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_rkbax"]
-radius = 0.25
+radius = 0.2
 height = 1.5
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_oul6g"]
-radius = 0.25
+radius = 0.2
 height = 1.8
 
-[node name="Player" type="CharacterBody3D" node_paths=PackedStringArray("camera_holder")]
+[node name="Player" type="CharacterBody3D"]
 collision_layer = 2
 collision_mask = 15
 script = ExtResource("1_oul6g")
-camera_holder = NodePath("Head")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+shape = SubResource("SphereShape3D_rkbax")
+
+[node name="StandCollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_kqu6x")
+
+[node name="Head" type="Node3D" parent="StandCollisionShape3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
 
 [node name="CrouchCollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 shape = SubResource("CapsuleShape3D_oul6g")
 
-[node name="ProneCollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0.25, 0)
+[node name="Head" type="Node3D" parent="CrouchCollisionShape3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+
+[node name="LayCollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0.2, 0)
 shape = SubResource("CapsuleShape3D_rkbax")
 
-[node name="Head" type="Node3D" parent="."]
+[node name="Head" type="Node3D" parent="LayCollisionShape3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0.5)
+
+[node name="HeadFollower" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
-[node name="Camera3D" type="Camera3D" parent="Head"]
+[node name="HeadHorizontal" type="Node3D" parent="HeadFollower"]
+
+[node name="HeadVertical" type="Node3D" parent="HeadFollower/HeadHorizontal"]
+
+[node name="Camera3D" type="Camera3D" parent="HeadFollower/HeadHorizontal/HeadVertical"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.341486)
 current = true
 
 [node name="body" type="Node3D" parent="."]
-visible = false
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="body"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)

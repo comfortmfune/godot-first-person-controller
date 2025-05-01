@@ -23,18 +23,15 @@ var controller := Controllers.KEYBOARD  ## required
 
 signal property_changed(property_name)
 
-@onready var camera_head_follower: Node3D = $HeadFollower ## core
-@onready var camera_holder_horizontal: Node3D = $HeadFollower/HeadHorizontal ## core
-@onready var camera_holder_vertical: Node3D = $HeadFollower/HeadHorizontal/HeadVertical
-@onready var body: Node3D = $body  ## core
-@onready var head: Node3D = $StandCollisionShape3D/Head
+@export var camera_head_follower: Node3D ## core
+@export var camera_holder_horizontal: Node3D  ## core
+@export var camera_holder_vertical: Node3D
+@export var body: Node3D  ## core
+@export var heads: Dictionary[String, Node3D]
+var head: Node3D
 var tracking_speed: float = 1.0
 
-@onready var collision_shapes: Dictionary[String, CollisionShape3D] = {
-	"stand": $StandCollisionShape3D,
-	"crouch": $CrouchCollisionShape3D,
-	"lay": $LayCollisionShape3D,
-}
+@export var collision_shapes: Dictionary[String, CollisionShape3D]
 
 var in_control: bool = false:  ## core
 	set(value):
@@ -180,36 +177,31 @@ var move_mode := MoveModes.WALK:
 
 func set_collision_shape(mode: PoseModes):
 	var node_keys_collision_values: Dictionary[String, bool] = {
-	"stand": true,
-	"crouch": true,
-	"lay": true,
+	"CollisionShape3D": true,
+	"CrouchCollisionShape3D": true,
+	"ProneCollisionShape3D": true,
 	}
 
 	match mode:
 		PoseModes.STAND:
-			node_keys_collision_values["stand"] = false
+			node_keys_collision_values["CollisionShape3D"] = false
 		PoseModes.SIT:
-			node_keys_collision_values["stand"] = false
+			node_keys_collision_values["CollisionShape3D"] = false
 		PoseModes.LAY:
-			node_keys_collision_values["lay"] = false
+			node_keys_collision_values["ProneCollisionShape3D"] = false
 		PoseModes.CROUCH:
-			node_keys_collision_values["crouch"] = false
+			node_keys_collision_values["CrouchCollisionShape3D"] = false
 
 	for node_name in node_keys_collision_values:
-		var collision_shape: CollisionShape3D = collision_shapes[node_name]
+		var collision_shape: CollisionShape3D = get_node(node_name)
 		if collision_shape.disabled != node_keys_collision_values[node_name]:
 			collision_shape.disabled = node_keys_collision_values[node_name]
 
 
-func motion_mapper_property_checker(property_name: String) -> void:
-	if property_name == "pose_mode" or property_name == "move_mode":
-		motion_mapper()
-
-
 func update_motion_control() -> void:
-	if not property_changed.is_connected(motion_mapper_property_checker) and in_control and not control_blocked:
-		property_changed.connect(motion_mapper_property_checker)
-		motion_mapper()
+	if not property_changed.is_connected(motion_mapper) and in_control and not control_blocked:
+		property_changed.connect(motion_mapper)
+		motion_mapper("pose_mode")
 	elif property_changed.is_connected(motion_mapper):
 		property_changed.disconnect(motion_mapper)
 		flush_action(move_on_ground_process)
@@ -218,18 +210,15 @@ func update_motion_control() -> void:
 ## Routes 'log' texts from where it is called to Lggr;
 ## prints to 'stdout' and 'stderr' if no Lggr is in the project (probably too verbose);
 ## called in: 'core'
-@export var lggr: Resource
-
 func log_(text: String, output_type: String = "std") -> void:
-	if not type_exists("Lggr") or not lggr:
+	if not type_exists("Lggr"):
 		var output: String = "lggr-in: '" + text + "' [ALERT: no Lggr to receive input]"
 		if output_type == "err":
 			printerr(output)
 		else:
 			print(output)
 		return
-
-	lggr.log(text, output_type)
+	# somehow use the lggr without explicitly writing it
 
 
 func get_input_direction() -> Vector3:
@@ -304,8 +293,6 @@ func maintain_property_on_hold(key_name: String, object: Object, property_name: 
 ## dependencies: utility, core
 
 func _ready() -> void:
-	camera_head_follower.top_level = true
-
 	property_changed.connect(
 		func (prop_name: String):
 			if prop_name == "in_control":
@@ -316,9 +303,6 @@ func _ready() -> void:
 			if prop_name == "control_blocked":
 				update_motion_control()
 	)
-
-	update_motion_control()
-	pose_mode = PoseModes.STAND
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -356,8 +340,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(_delta: float) -> void:
-	if head:
-		camera_head_follower.global_position = lerp(camera_head_follower.global_position, head.global_position, tracking_speed)
+	camera_head_follower.global_position = lerp(camera_head_follower.global_position, head.global_position, tracking_speed)
 
 	if controller == Controllers.JOYSTICK:
 		look_head_only(Input.get_vector("look_left", "look_right", "look_up", "look_down"),
@@ -369,7 +352,10 @@ func _process(_delta: float) -> void:
 
 ## utility-function for mapping executable-movement-actions (addons) to keypresses;
 ## not an addon; only delete if changing related 'utility' or 'core' functionality
-func motion_mapper() -> void:
+func motion_mapper(property_name: String) -> void:
+	if property_name != "pose_mode" and property_name != "move_mode":
+		return
+
 	match pose_mode:
 		PoseModes.LAY:
 			crawl("")
@@ -402,9 +388,9 @@ func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 			pass
 		"tertiary":
 			if hold:
-				_action_function = slide
+				_action_function = slide_manual
 			else:
-				_action_function = dive
+				_action_function = slide
 		"utility":
 			if Input.is_action_pressed("modifier"):
 				if pose_mode != PoseModes.STAND:
@@ -447,9 +433,7 @@ func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 
 func stand(_trigger_input: String) -> void:
 	pose_mode = PoseModes.STAND
-	head = collision_shapes.stand.get_node("Head")
-	$body/MeshInstance3D.rotation_degrees = Vector3.ZERO
-	$body/MeshInstance3D.position.y = 0.9
+	head = heads.stand
 	#camera_holder.position = Vector3(0, 1.5, 0)
 
 
@@ -469,9 +453,6 @@ func run(_trigger_input: String) -> void:
 func crouch(_trigger_input: String) -> void:
 	pose_mode = PoseModes.CROUCH
 	move_mode = MoveModes.WALK
-	head = collision_shapes.crouch.get_node("Head")
-	$body/MeshInstance3D.rotation_degrees = Vector3.ZERO
-	$body/MeshInstance3D.position.y = 0.9
 	#camera_holder.position = Vector3(0, 1.0, 0)
 
 
@@ -482,15 +463,10 @@ func crouch_walk(_trigger_input: String) -> void:
 ## ----
 @export var absolute_crawl_speed: float = 1.0
 
-func prone(_trigger_input: String, angle: float = camera_holder_horizontal.rotation_degrees.y) -> void:
-	#print("prone-angle: '", angle, "'")
-	collision_shapes.lay.rotation_degrees.y = angle
-	$body/MeshInstance3D.rotation_degrees.x = -90
-	$body/MeshInstance3D.rotation_degrees.y = angle
-	$body/MeshInstance3D.position.y = 0.2
+func prone(_trigger_input: String) -> void:
 	pose_mode = PoseModes.LAY
 	move_mode = MoveModes.WALK
-	head = collision_shapes.lay.get_node("Head")
+	#camera_holder.position = Vector3(0.75, 0.25, 0)
 
 
 func crawl(_trigger_input: String) -> void:
@@ -522,61 +498,40 @@ func sprint(_trigger_input: String) -> void:
 @export var absolute_slide_time: float = 0.5
 
 func slide(_trigger_input: String) -> void:
-	var angle: float = camera_holder_horizontal.rotation_degrees.y - 180.0
-	var slide_time: float = absolute_slide_time
-	if Input.is_action_pressed(_trigger_input): # condition for longer/inf slide (I effing love ultrakill)
-		slide_time = INF
-	#print("slide-angle: '", angle, "'")
-	prone(_trigger_input, angle)
+	prone(_trigger_input)
 	move_mode = MoveModes.SPRINT
 
 	var direction: Vector3 = get_input_direction()
 	if direction == Vector3.ZERO:
-		direction = (get_view_basis(camera_holder_horizontal) * Vector3.FORWARD).normalized()
+		direction = (get_view_basis(self) * Vector3.FORWARD).normalized()
 	
-	await move_over_time(direction * absolute_slide_speed, slide_time, false,
-	func ():
-		return Input.is_action_pressed(_trigger_input),
-		absolute_slide_time
+	await move_over_time(direction * absolute_slide_speed, absolute_slide_time)
+
+	stand(_trigger_input) # end in $USER desired pose
+	move_mode = MoveModes.RUN # case: sprint slide
+
+
+func slide_manual(_trigger_input: String) -> void:
+	prone(_trigger_input)
+	move_mode = MoveModes.SPRINT
+
+	var direction: Vector3 = get_input_direction()
+	if direction == Vector3.ZERO:
+		direction = (get_view_basis(self) * Vector3.FORWARD).normalized()
+	
+	await move_over_time(direction * absolute_slide_speed, INF, false,
+		func (): 
+			print(Input.is_action_pressed(_trigger_input))
+			return Input.is_action_pressed(_trigger_input), absolute_slide_time
 	)
 
 	stand(_trigger_input) # end in $USER desired pose
 	move_mode = MoveModes.RUN # case: sprint slide
 
 
-# func slide_manual(_trigger_input: String) -> void:
-# 	prone(_trigger_input)
-# 	move_mode = MoveModes.SPRINT
-
-# 	var direction: Vector3 = get_input_direction()
-# 	if direction == Vector3.ZERO:
-# 		direction = (get_view_basis(camera_holder_horizontal) * Vector3.FORWARD).normalized()
-	
-# 	await move_over_time(direction * absolute_slide_speed, INF, false,
-# 		func (): 
-# 			return Input.is_action_pressed(_trigger_input), absolute_slide_time
-# 	)
-
-# 	stand(_trigger_input) # end in $USER desired pose
-# 	move_mode = MoveModes.RUN # case: sprint slide
-
-
 ## ----
-@export var absolute_dive_speed: float = 6.0
-
 func dive(_trigger_input: String) -> void:
-	var direction: Vector3 = get_input_direction()
-	var angle: float = Vector3.FORWARD.signed_angle_to(direction, Vector3.UP)
-	angle = rad_to_deg(angle)
-	#print("dive-angle: '", angle, "'")
-	if direction == Vector3.ZERO:
-		pass # dive forward or back
-	control_blocked = true
-	jump(_trigger_input)
-	prone(_trigger_input, angle)
-	await move_over_time(direction * absolute_dive_speed, INF, false,
-	func () -> bool:
-		return is_on_floor(), 0.1)
+	pass # jump to prone in given direction
 
 
 ## ----

@@ -55,5 +55,25 @@ popup/item_2/text = "sprint"
 popup/item_2/id = 2
 popup/item_2/disabled = true
 
+[node name="VBoxContainer2" type="VBoxContainer" parent="."]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Pinned" type="VBoxContainer" parent="VBoxContainer2"]
+layout_mode = 2
+
+[node name="Variables" type="VBoxContainer" parent="VBoxContainer2"]
+layout_mode = 2
+
+[node name="State" type="VBoxContainer" parent="VBoxContainer2/Variables"]
+layout_mode = 2
+
+[node name="UXPlayer" type="VBoxContainer" parent="VBoxContainer2/Variables"]
+layout_mode = 2
+
+[node name="UXDev" type="VBoxContainer" parent="VBoxContainer2/Variables"]
+layout_mode = 2
+
 [editable path="VBoxContainer/PoseOptionSelect"]
 [editable path="VBoxContainer/MoveOptionSelect"]
