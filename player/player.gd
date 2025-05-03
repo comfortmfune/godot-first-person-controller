@@ -78,23 +78,6 @@ func set_action(action_function: Callable, action_func_args: Dictionary) -> void
 	current_actions[action_function] = action_func_args
 
 
-func look(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
-
-	var holder_rotation_degrees := Vector3(camera_holder_vertical.rotation_degrees.x, rotation_degrees.y, 0)
-
-	## horizontal rotation
-	holder_rotation_degrees.y -= turn.x * sensitivity.x
-	holder_rotation_degrees.y = wrapf(holder_rotation_degrees.y, 0, 360)
-
-	## vertical rotation
-	holder_rotation_degrees.x -= turn.y * sensitivity.y
-	holder_rotation_degrees.x = clampf(holder_rotation_degrees.x, -80, 80)
-
-	camera_holder_horizontal.rotation_degrees.y = 0 # TODO: figure out how to do elegantly
-	rotation_degrees.y = holder_rotation_degrees.y
-	camera_holder_vertical.rotation_degrees.x = holder_rotation_degrees.x
-
-
 func look_head_only(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
 	var holder_rotation_degrees := Vector3(camera_holder_vertical.rotation_degrees.x, camera_holder_horizontal.rotation_degrees.y, 0)
 
@@ -108,6 +91,26 @@ func look_head_only(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
 
 	camera_holder_horizontal.rotation_degrees.y = holder_rotation_degrees.y
 	camera_holder_vertical.rotation_degrees.x = holder_rotation_degrees.x
+
+
+func look_head_only_clamped(turn: Vector2, sensitivity := Vector2(0.15, 0.15), max_angle: float = 75.0) -> void:
+	var angle = body.global_basis.z.signed_angle_to(camera_holder_horizontal.global_basis.z, Vector3.DOWN)
+	var max_radians = deg_to_rad(max_angle)
+
+	if turn.x > 0 and angle > max_radians:
+		#print("right lock : '", rad_to_deg(angle), "'")
+		return
+	elif turn.x < 0 and angle < -max_radians:
+		#print("left lock : '", rad_to_deg(angle), "'")
+		return
+
+	look_head_only(turn, sensitivity)
+	#print("no lock: ", rad_to_deg(angle))
+
+
+func look_full_body(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
+	look_head_only(turn, sensitivity)
+	body.rotation.y = lerp(body.rotation.y, camera_holder_horizontal.rotation.y, 0.25)
 
 
 #func look_lying(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
@@ -159,9 +162,13 @@ func move_on_ground_process(args: Dictionary, _delta: float) -> void:
 ## utility -------------------------------------------------------------------------
 ## dependencies: core
 ##
+
 const controller_look_inputs: Array[String] = ["look_up", "look_down", "look_left", "look_right"]
 const motion_inputs: Array[String] = ["forward", "back", "left", "right"]
 const mappable_inputs: Array[String] = ["vertical", "primary", "secondary", "tertiary", "utility"]
+
+enum ViewModes { HEAD, UPPERBODY, FULLBODY }
+var view_mode := ViewModes.FULLBODY 
 
 enum PoseModes { STAND, SIT, LAY, CROUCH }
 var pose_mode := PoseModes.STAND:
@@ -335,10 +342,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return  ## do not proceed if control is paused
 
 	if controller == Controllers.KEYBOARD and event is InputEventMouseMotion:
-		#if pose_mode == PoseModes.LAY:
-			#look_head_only(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
-		#else:
-		look_head_only(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
+		if view_mode == ViewModes.FULLBODY:
+			look_full_body(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
+		else:
+			look_head_only_clamped(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
 	
 	elif control_blocked:
 		return ## buffer input
@@ -399,7 +406,8 @@ func action_mapper(input_trigger_name: String, hold: bool = false) -> void:
 		"primary":
 			pass
 		"secondary":
-			pass
+			if hold:
+				maintain_property_on_hold(input_trigger_name, self, "view_mode", ViewModes.UPPERBODY)
 		"tertiary":
 			if hold:
 				_action_function = slide
@@ -544,39 +552,25 @@ func slide(_trigger_input: String) -> void:
 	move_mode = MoveModes.RUN # case: sprint slide
 
 
-# func slide_manual(_trigger_input: String) -> void:
-# 	prone(_trigger_input)
-# 	move_mode = MoveModes.SPRINT
-
-# 	var direction: Vector3 = get_input_direction()
-# 	if direction == Vector3.ZERO:
-# 		direction = (get_view_basis(camera_holder_horizontal) * Vector3.FORWARD).normalized()
-	
-# 	await move_over_time(direction * absolute_slide_speed, INF, false,
-# 		func (): 
-# 			return Input.is_action_pressed(_trigger_input), absolute_slide_time
-# 	)
-
-# 	stand(_trigger_input) # end in $USER desired pose
-# 	move_mode = MoveModes.RUN # case: sprint slide
-
-
 ## ----
-@export var absolute_dive_speed: float = 6.0
+@export var absolute_dive_speed: float = 3.0
 
 func dive(_trigger_input: String) -> void:
 	var direction: Vector3 = get_input_direction()
+	if direction == Vector3.ZERO:
+		direction = get_view_basis(camera_holder_horizontal) * Vector3.BACK
 	var angle: float = Vector3.FORWARD.signed_angle_to(direction, Vector3.UP)
 	angle = rad_to_deg(angle)
 	#print("dive-angle: '", angle, "'")
-	if direction == Vector3.ZERO:
-		pass # dive forward or back
+
 	control_blocked = true
 	jump(_trigger_input)
 	prone(_trigger_input, angle)
 	await move_over_time(direction * absolute_dive_speed, INF, false,
 	func () -> bool:
-		return is_on_floor(), 0.1)
+		return not is_on_floor(), 0.1) ## NOTE: min time is just so the player can get off the ground first
+	
+	control_blocked = false
 
 
 ## ----
