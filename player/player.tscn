@@ -1,25 +1,25 @@
-[gd_scene load_steps=8 format=3 uid="uid://b8jlsokoc3n41"]
+[gd_scene load_steps=9 format=3 uid="uid://b8jlsokoc3n41"]
 
 [ext_resource type="Script" uid="uid://ctraqrddyh5od" path="res://player/player.gd" id="1_oul6g"]
 [ext_resource type="PackedScene" uid="uid://dw5wso2lajq35" path="res://player/hud.tscn" id="2_rkbax"]
+[ext_resource type="PackedScene" uid="uid://bhpqe6icoxwsy" path="res://player/lay_collision_mesh.glb" id="3_g1dw6"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_rkbax"]
-radius = 0.2
+radius = 0.15
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_kqu6x"]
-radius = 0.2
+radius = 0.15
 height = 1.8
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_oul6g"]
-radius = 0.2
+radius = 0.15
 height = 0.9
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_rkbax"]
-radius = 0.2
-height = 1.5
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_g1dw6"]
+points = PackedVector3Array(0.161429, 0.089972, -0.0688891, -0.100448, 0.161429, 1.14503, -0.076662, -0.171905, 1.14503, 0.0661858, -0.171905, -0.0688891, -0.100448, 0.161429, -0.0450284, 0.089972, 0.161429, 1.16889, -0.171905, 0.0661858, 1.16889, 0.161429, -0.100448, 1.14503, -0.171905, -0.076662, -0.0450284, 0.161429, -0.100448, -0.0450284, -0.0507209, -0.0507209, 1.2778, -0.0507209, -0.0507209, -0.177796, 0.089972, 0.161429, -0.0688891, -0.171905, -0.076662, 1.14503, -0.076662, -0.171905, -0.0450284, -0.171905, 0.0661858, -0.0688891, 0.0661858, -0.171905, 1.16889, 0.161429, 0.089972, 1.16889, 0.0628152, 0.0401204, 1.27581, 0.0401204, 0.0628152, -0.175807, 0.113791, -0.148086, -0.0688891, -0.148086, 0.113791, 1.16889, -0.0503499, 0.062445, 1.27186, 0.062445, -0.0503499, -0.171859, -0.148086, 0.113791, -0.0688891, 0.113791, -0.148086, 1.16889, 0.0624447, -0.0503497, 1.27186, -0.0503496, 0.0624447, -0.171855, 0.0171963, 0.107026, 1.24596, 0.107026, 0.0171963, -0.145958, 0.106705, -0.0276084, 1.24397, -0.0276084, 0.106705, -0.14397)
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_oul6g"]
-radius = 0.2
+radius = 0.15
 height = 1.8
 
 [node name="Player" type="CharacterBody3D"]
@@ -28,7 +28,7 @@ collision_mask = 15
 script = ExtResource("1_oul6g")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
 shape = SubResource("SphereShape3D_rkbax")
 
 [node name="StandCollisionShape3D" type="CollisionShape3D" parent="."]
@@ -36,21 +36,21 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_kqu6x")
 
 [node name="Head" type="Node3D" parent="StandCollisionShape3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, -0.2)
 
 [node name="CrouchCollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 shape = SubResource("CapsuleShape3D_oul6g")
 
 [node name="Head" type="Node3D" parent="CrouchCollisionShape3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, -0.2)
 
 [node name="LayCollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0.2, 0)
-shape = SubResource("CapsuleShape3D_rkbax")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.16, 0)
+shape = SubResource("ConvexPolygonShape3D_g1dw6")
 
 [node name="Head" type="Node3D" parent="LayCollisionShape3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0.5)
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0.29, 0)
 
 [node name="HeadFollower" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
@@ -60,7 +60,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 [node name="HeadVertical" type="Node3D" parent="HeadFollower/HeadHorizontal"]
 
 [node name="Camera3D" type="Camera3D" parent="HeadFollower/HeadHorizontal/HeadVertical"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.341486)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.200311)
 current = true
 
 [node name="body" type="Node3D" parent="."]
@@ -71,3 +71,8 @@ mesh = SubResource("CapsuleMesh_oul6g")
 
 [node name="HuD" parent="." node_paths=PackedStringArray("player") instance=ExtResource("2_rkbax")]
 player = NodePath("..")
+
+[node name="lay_collision_mesh" parent="." instance=ExtResource("3_g1dw6")]
+visible = false
+
+[editable path="lay_collision_mesh"]

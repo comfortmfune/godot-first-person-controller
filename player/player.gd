@@ -93,31 +93,30 @@ func look_head_only(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
 	camera_holder_vertical.rotation_degrees.x = holder_rotation_degrees.x
 
 
-func look_head_only_clamped(turn: Vector2, sensitivity := Vector2(0.15, 0.15), max_angle: float = 75.0) -> void:
-	var angle = body.global_basis.z.signed_angle_to(camera_holder_horizontal.global_basis.z, Vector3.DOWN)
+func look_head_only_clamped(turn: Vector2, sensitivity := Vector2(0.15, 0.15), max_angle: float = 75.0, offset: float = 0.0) -> void:
+	print("vec: ", -body.global_basis.z)
+	var forward_vector: Vector3 = (-body.global_basis.z).rotated(Vector3.UP, deg_to_rad(offset))
+	print(forward_vector)
+	var angle = forward_vector.signed_angle_to(camera_holder_horizontal.global_basis.z, Vector3.UP)
 	var max_radians = deg_to_rad(max_angle)
 
-	if turn.x > 0 and angle > max_radians:
-		#print("right lock : '", rad_to_deg(angle), "'")
+	print("offset: '", offset, "'")
+	if turn.x > 0 and angle < -max_radians:
+		print("right lock : '", rad_to_deg(angle), "'")
 		return
-	elif turn.x < 0 and angle < -max_radians:
-		#print("left lock : '", rad_to_deg(angle), "'")
+	elif turn.x < 0 and angle > max_radians:
+		print("left lock : '", rad_to_deg(angle), "'")
 		return
 
 	look_head_only(turn, sensitivity)
-	#print("no lock: ", rad_to_deg(angle))
+	print("no lock: ", rad_to_deg(angle))
 
 
 func look_full_body(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
 	look_head_only(turn, sensitivity)
-	body.rotation.y = lerp(body.rotation.y, camera_holder_horizontal.rotation.y, 0.25)
-
-
-#func look_lying(turn: Vector2, sensitivity := Vector2(0.15, 0.15)) -> void:
-	#look_head_only(turn, sensitivity)
-	#rotation_degrees.y = turn.x * sensitivity.x
-	#for collision_name in collision_shapes:
-		#collision_shapes[collision_name].rotation_degrees.y = -rotation_degrees.y
+	#body.rotation.y = lerp(body.rotation.y, camera_holder_horizontal.rotation.y, 0.25)
+	body.global_rotation.y = camera_holder_horizontal.global_rotation.y
+	collision_shapes.lay.global_rotation.y = camera_holder_horizontal.global_rotation.y
 
 
 func move(direction: Vector3) -> void:
@@ -168,7 +167,7 @@ const motion_inputs: Array[String] = ["forward", "back", "left", "right"]
 const mappable_inputs: Array[String] = ["vertical", "primary", "secondary", "tertiary", "utility"]
 
 enum ViewModes { HEAD, UPPERBODY, FULLBODY }
-var view_mode := ViewModes.FULLBODY 
+var view_mode := ViewModes.FULLBODY
 
 enum PoseModes { STAND, SIT, LAY, CROUCH }
 var pose_mode := PoseModes.STAND:
@@ -183,6 +182,8 @@ var move_mode := MoveModes.WALK:
 	set(value):
 		move_mode = value
 		property_changed.emit("move_mode")
+
+var rotation_degrees_on_lay: float = 0.0
 
 
 func set_collision_shape(mode: PoseModes):
@@ -315,13 +316,16 @@ func _ready() -> void:
 
 	property_changed.connect(
 		func (prop_name: String):
-			if prop_name == "in_control":
-				update_motion_control()
-	)
-	property_changed.connect(
-		func (prop_name: String):
-			if prop_name == "control_blocked":
-				update_motion_control()
+			match prop_name:
+				"in_control":
+					update_motion_control()
+
+				"control_blocked":
+					update_motion_control()
+
+				"pose_mode":
+					if pose_mode != PoseModes.LAY:
+						rotation_degrees_on_lay = 0
 	)
 
 	update_motion_control()
@@ -345,7 +349,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if view_mode == ViewModes.FULLBODY:
 			look_full_body(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
 		else:
-			look_head_only_clamped(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
+			if pose_mode == PoseModes.LAY:
+				look_head_only_clamped(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity), 90.0, rotation_degrees_on_lay)
+			else:
+				look_head_only_clamped(event.relative, Vector2(mouse_horizontal_sensitivity, mouse_vertical_sensitivity))
 	
 	elif control_blocked:
 		return ## buffer input
@@ -458,7 +465,7 @@ func stand(_trigger_input: String) -> void:
 	head = collision_shapes.stand.get_node("Head")
 	$body/MeshInstance3D.rotation_degrees = Vector3.ZERO
 	$body/MeshInstance3D.position.y = 0.9
-	#camera_holder.position = Vector3(0, 1.5, 0)
+	$body/MeshInstance3D.position.z = 0
 
 
 func walk(_trigger_input: String) -> void:
@@ -480,7 +487,7 @@ func crouch(_trigger_input: String) -> void:
 	head = collision_shapes.crouch.get_node("Head")
 	$body/MeshInstance3D.rotation_degrees = Vector3.ZERO
 	$body/MeshInstance3D.position.y = 0.9
-	#camera_holder.position = Vector3(0, 1.0, 0)
+	$body/MeshInstance3D.position.z = 0
 
 
 func crouch_walk(_trigger_input: String) -> void:
@@ -490,12 +497,14 @@ func crouch_walk(_trigger_input: String) -> void:
 ## ----
 @export var absolute_crawl_speed: float = 1.0
 
-func prone(_trigger_input: String, angle: float = camera_holder_horizontal.rotation_degrees.y) -> void:
-	#print("prone-angle: '", angle, "'")
-	collision_shapes.lay.rotation_degrees.y = angle
+func prone(_trigger_input: String, angle: float = camera_holder_horizontal.rotation_degrees.y, ground_turn: float = 0.0) -> void:
+	print("prone-angle: '", angle, "'")
+	body.rotation_degrees.y = angle
+	rotation_degrees_on_lay = ground_turn
+
 	$body/MeshInstance3D.rotation_degrees.x = -90
-	$body/MeshInstance3D.rotation_degrees.y = angle
-	$body/MeshInstance3D.position.y = 0.2
+	$body/MeshInstance3D.position.y = 0.15
+	$body/MeshInstance3D.position.z = 0.75
 	pose_mode = PoseModes.LAY
 	move_mode = MoveModes.WALK
 	head = collision_shapes.lay.get_node("Head")
@@ -560,15 +569,16 @@ func dive(_trigger_input: String) -> void:
 	if direction == Vector3.ZERO:
 		direction = get_view_basis(camera_holder_horizontal) * Vector3.BACK
 	var angle: float = Vector3.FORWARD.signed_angle_to(direction, Vector3.UP)
+	var view_angle: float = (-body.global_basis.z).signed_angle_to(direction, Vector3.UP)
 	angle = rad_to_deg(angle)
 	#print("dive-angle: '", angle, "'")
 
 	control_blocked = true
 	jump(_trigger_input)
-	prone(_trigger_input, angle)
+	prone(_trigger_input, angle, view_angle)
 	await move_over_time(direction * absolute_dive_speed, INF, false,
 	func () -> bool:
-		return not is_on_floor(), 0.1) ## NOTE: min time is just so the player can get off the ground first
+		return not is_on_floor(), 0.1) ## NOTE: min time is so the player can get off the ground first
 	
 	control_blocked = false
 
